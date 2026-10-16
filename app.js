@@ -414,8 +414,16 @@ function aplicarReasignacion(x, cat) {
 }
 
 function aplicarPendientes() {
+  // Los cambios ya importados al dashboard (vienen marcados como revisados) se borran de este navegador.
   const pend = leerPend();
-  for (const x of st.datos.movimientos) if (pend[x.id]) aplicarReasignacion(x, pend[x.id].categoria);
+  for (const x of st.datos.movimientos) {
+    for (const k of [x.id, x.legacy_id]) {
+      if (!k || !pend[k]) continue;
+      if (x.revisado && x.categoria === pend[k].categoria) delete pend[k];
+      else aplicarReasignacion(x, pend[k].categoria);
+    }
+  }
+  guardarPend(pend);
 }
 
 async function guardarCambios(cambios) {
