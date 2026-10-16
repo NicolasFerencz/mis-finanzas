@@ -269,7 +269,7 @@ function renderDetalle(meses) {
   const tot = movs.filter((x) => x.tipo !== 'neutro').reduce((a, x) => a + monto(x), 0);
   $('#detalle-titulo').textContent = `${st.catSel} · ${movs.length} movimientos · ${fmt(tot)}`;
   $('#tabla-mov tbody').innerHTML = movs.map((x) => `
-    <tr><td class="fecha">${x.fecha.split('-').reverse().join('/')}</td><td>${esc(x.fuente)}</td>
+    <tr class="clic" data-mov="${esc(x.id)}"><td class="fecha">${x.fecha.split('-').reverse().join('/')}</td><td>${esc(x.fuente)}</td>
     <td>${esc(x.desc)}${x.estimado ? ' <span class="tag est">estimado</span>' : ''}${x.nota ? `<div class="nota">${esc(x.nota)}</div>` : ''}</td>
     <td><span class="tag">${esc(x.tipo)}</span></td><td class="num">${fmt(monto(x))}</td></tr>`).join('')
     || '<tr><td colspan="5" class="nota">Sin movimientos en el período.</td></tr>';
@@ -407,39 +407,108 @@ function render() {
 const leerPend = () => { try { return JSON.parse(localStorage.getItem('reasignaciones') || '{}'); } catch (e) { return {}; } };
 const guardarPend = (o) => { try { localStorage.setItem('reasignaciones', JSON.stringify(o)); } catch (e) {} };
 
-function aplicarReasignacion(x, cat) {
-  if (!x.catOriginal) x.catOriginal = x.categoria;
-  x.categoria = cat || x.catOriginal;
-  x.revisado = !!cat;
+// Override de una línea: { categoria?, tipo?, comentario? }. null = volver a lo automático.
+function aplicarOverride(x, ov) {
+  if (!x.orig) x.orig = x.auto ? { ...x.auto, comentario: '' } : { categoria: x.categoria, tipo: x.tipo, comentario: x.comentario || '' };
+  x.ov = ov && Object.keys(ov).length ? ov : null;
+  x.categoria = x.ov?.categoria || x.orig.categoria;
+  x.tipo = x.ov?.tipo || x.orig.tipo;
+  x.comentario = x.ov?.comentario ?? x.orig.comentario;
+  x.revisado = !!x.ov;
 }
 
 function aplicarPendientes() {
   // Los cambios ya importados al dashboard (vienen marcados como revisados) se borran de este navegador.
   const pend = leerPend();
   for (const x of st.datos.movimientos) {
+    if (x.revisado) x.ov = { categoria: x.categoria, ...(x.tipo_ov ? { tipo: x.tipo } : {}), ...(x.comentario ? { comentario: x.comentario } : {}) };
     for (const k of [x.id, x.legacy_id]) {
       if (!k || !pend[k]) continue;
-      if (x.revisado && x.categoria === pend[k].categoria) delete pend[k];
-      else aplicarReasignacion(x, pend[k].categoria);
+      const p = pend[k];
+      const igual = x.revisado && x.categoria === p.categoria && (!p.tipo || p.tipo === x.tipo) && (p.comentario || '') === (x.comentario || '');
+      if (igual) delete pend[k];
+      else aplicarOverride(x, p.borrar ? null : { categoria: p.categoria, tipo: p.tipo, comentario: p.comentario });
     }
   }
   guardarPend(pend);
 }
 
+// cambios: [{ x, ov }] (ov null = deshacer). Compatibilidad: { x, categoria }.
 async function guardarCambios(cambios) {
-  for (const c of cambios) aplicarReasignacion(c.x, c.categoria);
-  const cuerpo = { cambios: cambios.map((c) => ({ id: c.x.id, categoria: c.categoria, desc: c.x.desc })) };
+  const norm = cambios.map((c) => ('ov' in c ? c : { x: c.x, ov: c.categoria ? { ...(c.x.ov || {}), categoria: c.categoria } : null }));
+  for (const c of norm) aplicarOverride(c.x, c.ov);
+  const cuerpo = { cambios: norm.map((c) => ({ id: c.x.id, desc: c.x.desc, ...(c.ov || {}), ...(c.ov ? {} : { borrar: true }) })) };
   let ok = false;
   if (st.local) {
     try { ok = (await fetch('/api/reasignar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) })).ok; } catch (e) {}
   }
   if (!ok) {
     const pend = leerPend();
-    for (const c of cuerpo.cambios) { if (c.categoria) pend[c.id] = c; else delete pend[c.id]; }
+    for (const c of cuerpo.cambios) pend[c.id] = c;
     guardarPend(pend);
   }
   render();
+  if (st.panelId) abrirPanel(st.panelId);
 }
+
+// ---------- PANEL LATERAL (detalle editable de una línea)
+function abrirPanel(id) {
+  const x = st.datos.movimientos.find((m) => m.id === id);
+  if (!x) return;
+  st.panelId = id;
+  const cats = [...new Set([...st.datos.orden_categorias, ...st.datos.movimientos.map((m) => m.categoria)])];
+  const fila = (k, v) => (v === '' || v === undefined || v === null ? '' : `<dt>${k}</dt><dd>${v}</dd>`);
+  const hermanas = st.datos.movimientos.filter((m) => m !== x && m.fecha === x.fecha && m.desc.split(' (')[0] === x.desc.split(' (')[0]);
+  $('#panel-cuerpo').innerHTML = `
+    <p class="panel-fecha">${fechaUy(x.fecha)} · ${esc(x.fuente)}</p>
+    <h3>${esc(x.desc)}</h3>
+    <p class="panel-monto ${x.tipo}">${fmt(monto(x))}</p>
+    <p class="nota">$U ${new Intl.NumberFormat('es-UY', { maximumFractionDigits: 2 }).format(x.uyu)} · US$ ${new Intl.NumberFormat('es-UY', { maximumFractionDigits: 2 }).format(x.usd)}</p>
+    ${x.duda && !x.revisado ? `<p class="duda n${x.duda}">Duda: ${esc(x.motivo)}</p>` : ''}
+    <label>Categoría<select id="p-cat">${cats.map((c) => `<option ${c === x.categoria ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+    <label>¿Cuenta?<select id="p-tipo">
+      ${[['egreso', 'Sí, es gasto mío'], ['neutro', 'No (neutro: no es consumo mío)'], ['ingreso', 'Es un ingreso']].map(([v, t]) => `<option value="${v}" ${v === x.tipo ? 'selected' : ''}>${t}</option>`).join('')}
+    </select></label>
+    <label>Comentario<textarea id="p-com" rows="3" placeholder="Ej.: regalo para Ana, lo devolví, etc.">${esc(x.comentario || '')}</textarea></label>
+    <div class="panel-botones">
+      <button class="boton primario" id="p-guardar">Guardar</button>
+      ${x.revisado ? '<button class="boton" id="p-deshacer">Volver a lo automático</button>' : ''}
+    </div>
+    <dl class="panel-datos">
+      ${fila('Nota', esc(x.nota))}
+      ${x.orig && x.revisado ? fila('Automático', esc(`${x.orig.categoria} · ${x.orig.tipo}`)) : ''}
+      ${fila('Estimado', x.estimado ? 'sí' : '')}
+      ${fila('Id', `<code>${esc(x.id)}</code>`)}
+    </dl>
+    ${hermanas.length ? `<p class="nota">Líneas relacionadas:</p><ul class="panel-rel">${hermanas.map((h) => `<li><a href="#" data-panel="${esc(h.id)}">${esc(h.desc)}</a> · ${fmt(monto(h))} · ${esc(h.tipo)}</li>`).join('')}</ul>` : ''}`;
+  $('#panel').hidden = false;
+  document.body.classList.add('con-panel');
+  $('#p-guardar').addEventListener('click', () => {
+    const ov = {};
+    const cat = $('#p-cat').value, tipo = $('#p-tipo').value, com = $('#p-com').value.trim();
+    const o = x.orig || (x.auto ? { ...x.auto, comentario: '' } : { categoria: x.categoria, tipo: x.tipo, comentario: x.comentario || '' });
+    ov.categoria = cat;
+    if (tipo !== o.tipo) ov.tipo = tipo;
+    if (com) ov.comentario = com;
+    guardarCambios([{ x, ov }]);
+  });
+  $('#p-deshacer')?.addEventListener('click', () => guardarCambios([{ x, ov: null }]));
+  $$('#panel-cuerpo [data-panel]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); abrirPanel(a.dataset.panel); }));
+}
+
+function cerrarPanel() {
+  st.panelId = null;
+  $('#panel').hidden = true;
+  document.body.classList.remove('con-panel');
+}
+
+// Cualquier fila con data-mov abre el panel.
+document.addEventListener('click', (e) => {
+  if (e.target.closest('select, button, a, input, textarea, summary')) return;
+  const tr = e.target.closest('tr[data-mov]');
+  if (tr) abrirPanel(tr.dataset.mov);
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && st.panelId) cerrarPanel(); });
 
 const pendientesRevision = () => st.datos.movimientos.filter((x) => x.tipo === 'egreso' && x.duda > 0 && !x.revisado);
 
@@ -491,7 +560,7 @@ function renderRevisar() {
   const visibles = lista.slice(0, st.revLimite);
   $('#rev-tabla tbody').innerHTML = visibles.map((x) => {
     const iguales = pend.filter((y) => y !== x && clave(y) === clave(x)).length;
-    return `<tr data-id="${esc(x.id)}" class="${x.revisado ? 'hecho' : ''}">
+    return `<tr data-id="${esc(x.id)}" data-mov="${esc(x.id)}" class="clic ${x.revisado ? 'hecho' : ''}">
       <td class="fecha">${fechaUy(x.fecha)}</td>
       <td>${esc(x.desc)}<div class="nota">${esc(x.fuente)}${x.nota ? ' · ' + esc(x.nota) : ''}</div></td>
       <td class="num">${fmt(monto(x))}</td>
@@ -550,8 +619,8 @@ function lineasDetalle() {
 function tablaLineas(movs, q) {
   return `<div class="scroll"><table class="tabla"><thead><tr><th>Fecha</th><th>Descripción</th><th>Fuente</th><th class="num">Monto</th></tr></thead><tbody>${
     movs.sort((a, b) => a.fecha.localeCompare(b.fecha) || monto(b) - monto(a)).map((x) => `
-    <tr><td class="fecha">${fechaUy(x.fecha)}</td>
-    <td>${resaltar(x.desc, q)}${x.estimado ? ' <span class="tag est">estimado</span>' : ''}${x.nota ? `<div class="nota">${resaltar(x.nota, q)}</div>` : ''}</td>
+    <tr class="clic" data-mov="${esc(x.id)}"><td class="fecha">${fechaUy(x.fecha)}</td>
+    <td>${resaltar(x.desc, q)}${x.comentario ? ' <span class="tag">💬</span>' : ''}${x.estimado ? ' <span class="tag est">estimado</span>' : ''}${x.nota ? `<div class="nota">${resaltar(x.nota, q)}</div>` : ''}</td>
     <td><span class="tag">${esc(x.fuente)}</span></td><td class="num">${fmt(monto(x))}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
@@ -689,6 +758,7 @@ function iniciar(datos) {
     $('#det-expandir').textContent = abrir ? 'Contraer todo' : 'Expandir todo';
   });
   $('#det-csv').addEventListener('click', exportarCSV);
+  $('#panel-cerrar').addEventListener('click', cerrarPanel);
   $$('[data-nivel]').forEach((b) => b.addEventListener('click', () => { st.revNivel = +b.dataset.nivel; setPressed('[data-nivel]', 'nivel', b.dataset.nivel); st.revLimite = 60; render(); }));
   $('#rev-mes').addEventListener('change', (e) => { st.revMes = e.target.value; st.revLimite = 60; render(); });
   let tRev;

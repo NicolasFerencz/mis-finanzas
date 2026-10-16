@@ -9,7 +9,7 @@
     // Aplica el tema guardado antes de pintar, para que no parpadee.
     try { const t = localStorage.getItem('tema'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261016194705">
+  <link rel="stylesheet" href="styles.css?v=20261016195028">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -184,6 +184,11 @@
     </section>
   </main>
 
+  <aside class="panel" id="panel" hidden aria-label="Detalle del movimiento">
+    <div class="panel-head"><span>Movimiento</span><button class="icono" id="panel-cerrar" aria-label="Cerrar">✕</button></div>
+    <div id="panel-cuerpo"></div>
+  </aside>
+
   <div class="login" id="login" hidden>
     <form class="card login-card" id="login-form" autocomplete="on">
       <h2>Mis finanzas</h2>
@@ -199,6 +204,6 @@
     </form>
   </div>
 
-  <script src="app.js?v=20261016194705"></script>
+  <script src="app.js?v=20261016195028"></script>
 </body>
 </html>
