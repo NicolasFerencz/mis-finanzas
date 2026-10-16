@@ -7,6 +7,7 @@ const N_SLOTS = 7; // categorías con color propio; el resto se agrupa en "Resto
 const st = {
   datos: null, moneda: 'uyu', desde: null, hasta: null, modo: 'mes', ventana: 3,
   tab: 'resumen', escala: 'propia', catSel: null, verNeutros: false,
+  detMes: null, detBuscar: '', detNeutros: false, detAbiertas: new Set(),
 };
 const charts = {};
 
@@ -172,6 +173,8 @@ function renderResumen() {
   nuevoChart('ch-resumen', {
     data: { labels: meses.map((m) => nombreMes(m) + (incompletos[m] ? ' ⚠' : '')), datasets },
     options: {
+      onClick: (ev, els) => { if (els.length && st.modo === 'mes') { st.detMes = meses[els[0].index]; mostrarTab('detalle'); } },
+      onHover: (ev, els) => { ev.native.target.style.cursor = els.length && st.modo === 'mes' ? 'pointer' : ''; },
       maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
       scales: { x: ejeX({ stacked: true }), y: ejeY({ stacked: true, min: yMin }) },
       plugins: {
@@ -392,6 +395,139 @@ function render() {
   if (st.tab === 'resumen') renderResumen();
   if (st.tab === 'patrimonio') renderPatrimonio();
   if (st.tab === 'tendencias') renderTendencias();
+  if (st.tab === 'detalle') renderDetalleMes();
+}
+
+// ---------- DETALLE MENSUAL
+const TODO = '*';
+const mesesCompletos = () => {
+  const hoy = new Date().toISOString().slice(0, 7);
+  const ms = st.datos.meses.filter((m) => m < hoy);
+  return ms.length ? ms : st.datos.meses;
+};
+const fechaUy = (f) => f.split('-').reverse().join('/');
+const normal = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+function coincide(x, q) {
+  if (!q) return true;
+  const hay = normal(`${x.desc} ${x.nota || ''} ${x.fuente} ${x.categoria} ${Math.round(Math.abs(x.uyu))} ${Math.abs(x.usd).toFixed(2)}`);
+  return normal(q).split(/\s+/).every((p) => hay.includes(p));
+}
+
+function resaltar(texto, q) {
+  const t = esc(texto);
+  if (!q) return t;
+  let out = t;
+  for (const p of q.trim().split(/\s+/).filter((w) => w.length > 1)) {
+    const re = new RegExp(`(${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    out = out.replace(re, '<mark>$1</mark>');
+  }
+  return out;
+}
+
+function lineasDetalle() {
+  const meses = st.detMes === TODO ? mesesCompletos() : [st.detMes];
+  return st.datos.movimientos.filter((x) => meses.includes(x.mes) && coincide(x, st.detBuscar));
+}
+
+function tablaLineas(movs, q) {
+  return `<div class="scroll"><table class="tabla"><thead><tr><th>Fecha</th><th>Descripción</th><th>Fuente</th><th class="num">Monto</th></tr></thead><tbody>${
+    movs.sort((a, b) => a.fecha.localeCompare(b.fecha) || monto(b) - monto(a)).map((x) => `
+    <tr><td class="fecha">${fechaUy(x.fecha)}</td>
+    <td>${resaltar(x.desc, q)}${x.estimado ? ' <span class="tag est">estimado</span>' : ''}${x.nota ? `<div class="nota">${resaltar(x.nota, q)}</div>` : ''}</td>
+    <td><span class="tag">${esc(x.fuente)}</span></td><td class="num">${fmt(monto(x))}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function bloqueCategorias(movs, clave, { colores = {}, promedios = {}, esIngreso = false, nMeses = 1 } = {}) {
+  const grupos = {};
+  for (const x of movs) (grupos[x[clave]] ||= []).push(x);
+  const tot = (xs) => xs.reduce((a, x) => a + monto(x), 0);
+  const nombres = Object.keys(grupos).sort((a, b) => tot(grupos[b]) - tot(grupos[a]));
+  const total = nombres.reduce((a, c) => a + tot(grupos[c]), 0);
+  const max = Math.max(1, ...nombres.map((c) => tot(grupos[c])));
+  const q = st.detBuscar;
+  const html = nombres.map((c) => {
+    const t = tot(grupos[c]);
+    const prom = promedios[c];
+    const enMes = t / nMeses;
+    let delta = '';
+    if (prom !== undefined && prom > 0) {
+      const d = enMes / prom - 1;
+      delta = `<span class="delta ${d > 0.1 ? 'up' : d < -0.1 ? 'down' : ''}" title="Promedio mensual del año: ${fmt(prom)}">${d >= 0 ? '+' : ''}${Math.round(d * 100)}% vs. prom.</span>`;
+    } else if (prom !== undefined) delta = '<span>—</span>';
+    const abierta = st.detAbiertas.has(clave + c) || (q && grupos[c].length <= 60);
+    const colorBarra = colores[c] ? css(colores[c]) : css('--resto');
+    return `<details class="cat ${esIngreso ? 'ing' : ''}" data-k="${esc(clave + c)}" ${abierta ? 'open' : ''}>
+      <summary><span class="flecha">▶</span>
+        <span class="nom"><b>${esc(c)}</b><span class="barra"><i style="width:${Math.max(2, (t / max) * 100)}%;background:${colorBarra}"></i></span></span>
+        <span class="cifras"><span class="tot">${fmt(t)}</span><span>${total ? pct(t / total) : '—'}</span><span>${grupos[c].length} mov.</span>${delta || '<span></span>'}</span>
+      </summary>
+      <div class="lineas">${tablaLineas(grupos[c], q)}</div>
+    </details>`;
+  }).join('');
+  return (html || '<p class="nota">Sin movimientos.</p>') + (nombres.length ? `<div class="det-total"><span>Total</span><span>${fmt(total)}</span></div>` : '');
+}
+
+function promediosMensuales(tipo, clave) {
+  const ms = mesesCompletos();
+  const acc = {};
+  for (const x of st.datos.movimientos) if (x.tipo === tipo && ms.includes(x.mes)) acc[x[clave]] = (acc[x[clave]] || 0) + monto(x);
+  for (const k of Object.keys(acc)) acc[k] /= ms.length;
+  return acc;
+}
+
+function renderDetalleMes() {
+  const sel = $('#det-mes');
+  if (!sel.options.length) {
+    sel.innerHTML = st.datos.meses.map((m) => `<option value="${m}">${nombreMes(m, true)}</option>`).join('')
+      + `<option value="${TODO}">Todo el período (${nombreMes(mesesCompletos()[0], true)} – ${nombreMes(mesesCompletos().at(-1), true)})</option>`;
+  }
+  if (!st.detMes) st.detMes = leer('detMes') || mesesCompletos().at(-1);
+  sel.value = st.detMes;
+  guardar('detMes', st.detMes);
+  const esTodo = st.detMes === TODO;
+  const nMeses = esTodo ? mesesCompletos().length : 1;
+  const movs = lineasDetalle();
+  const egr = movs.filter((x) => x.tipo === 'egreso');
+  const ing = movs.filter((x) => x.tipo === 'ingreso');
+  const neu = movs.filter((x) => x.tipo === 'neutro');
+  const s = (xs) => xs.reduce((a, x) => a + monto(x), 0);
+  const tE = s(egr), tI = s(ing);
+  const promE = Object.values(promediosMensuales('egreso', 'categoria')).reduce((a, b) => a + b, 0);
+  const sufijo = esTodo ? ` · ${nMeses} meses` : '';
+  $('#det-kpis').innerHTML = [
+    kpi('Ingresos', fmt(tI), esTodo ? `Promedio ${fmt(tI / nMeses)} / mes` : nombreMes(st.detMes, true)),
+    kpi('Egresos', fmt(tE), esTodo ? `Promedio ${fmt(tE / nMeses)} / mes` : `Promedio del año ${fmt(promE)}`),
+    kpi('Ahorro', fmt(tI - tE), tI ? `Tasa ${pct((tI - tE) / tI)}${sufijo}` : sufijo, tI - tE >= 0 ? 'pos' : 'neg'),
+    kpi('Movimientos', String(egr.length + ing.length), `${neu.length} neutros${st.detBuscar ? ' · filtrado' : ''}`),
+  ].join('');
+  const avisos = esTodo ? [] : (st.datos.completitud.por_mes[st.detMes] || []);
+  $('#det-avisos').innerHTML = avisos.map((a) => `<span class="chip">⚠ ${esc(a)}</span>`).join('');
+  const { color } = categoriasConColor();
+  $('#det-titulo').textContent = `Egresos por categoría · ${esTodo ? 'todo el período' : nombreMes(st.detMes, true)}`;
+  $('#det-egresos').innerHTML = bloqueCategorias(egr, 'categoria', { colores: color, promedios: st.detBuscar ? {} : promediosMensuales('egreso', 'categoria'), nMeses });
+  $('#det-ingresos').innerHTML = bloqueCategorias(ing, 'categoria', { promedios: st.detBuscar ? {} : promediosMensuales('ingreso', 'categoria'), esIngreso: true, nMeses });
+  $('#det-neutros-card').hidden = !st.detNeutros;
+  if (st.detNeutros) $('#det-neutros-lista').innerHTML = bloqueCategorias(neu, 'categoria', { nMeses });
+  $$('#tab-detalle details.cat').forEach((d) => d.addEventListener('toggle', () => {
+    if (d.open) st.detAbiertas.add(d.dataset.k); else st.detAbiertas.delete(d.dataset.k);
+  }));
+  const i = st.datos.meses.indexOf(st.detMes);
+  $('#det-prev').disabled = esTodo || i <= 0;
+  $('#det-next').disabled = esTodo || i >= st.datos.meses.length - 1;
+}
+
+function exportarCSV() {
+  const movs = lineasDetalle().filter((x) => x.tipo !== 'neutro' || st.detNeutros).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const filas = [['fecha', 'tipo', 'categoria', 'descripcion', 'fuente', 'monto_uyu', 'monto_usd', 'nota']]
+    .concat(movs.map((x) => [x.fecha, x.tipo, x.categoria, x.desc, x.fuente, x.uyu, x.usd, x.nota || '']));
+  const blob = new Blob(['\ufeff' + filas.map((f) => f.map(q).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `finanzas_${st.detMes === TODO ? 'periodo' : st.detMes}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 function setPressed(sel, attr, val) {
@@ -421,6 +557,20 @@ function iniciar(datos) {
   $$('[data-escala]').forEach((b) => b.addEventListener('click', () => { st.escala = b.dataset.escala; setPressed('[data-escala]', 'escala', st.escala); render(); }));
   $('#ver-neutros').addEventListener('change', (e) => { st.verNeutros = e.target.checked; renderDetalle(mesesRango()); });
   $$('[data-tab]').forEach((b) => b.addEventListener('click', () => mostrarTab(b.dataset.tab)));
+  $('#det-mes').addEventListener('change', (e) => { st.detMes = e.target.value; render(); });
+  const moverMes = (d) => { const i = st.datos.meses.indexOf(st.detMes) + d; if (i >= 0 && i < st.datos.meses.length) { st.detMes = st.datos.meses[i]; render(); } };
+  $('#det-prev').addEventListener('click', () => moverMes(-1));
+  $('#det-next').addEventListener('click', () => moverMes(1));
+  let tBuscar;
+  $('#det-buscar').addEventListener('input', (e) => { clearTimeout(tBuscar); tBuscar = setTimeout(() => { st.detBuscar = e.target.value.trim(); render(); }, 150); });
+  $('#det-neutros').addEventListener('change', (e) => { st.detNeutros = e.target.checked; render(); });
+  $('#det-expandir').addEventListener('click', () => {
+    const ds = $$('#tab-detalle details.cat');
+    const abrir = ds.some((d) => !d.open);
+    ds.forEach((d) => { d.open = abrir; });
+    $('#det-expandir').textContent = abrir ? 'Contraer todo' : 'Expandir todo';
+  });
+  $('#det-csv').addEventListener('click', exportarCSV);
   $('#tema').addEventListener('click', () => {
     const nuevo = temaActual() === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = nuevo; guardar('tema', nuevo); pintarBotonTema(); render();
@@ -436,7 +586,7 @@ function mostrarTab(tab) {
   st.tab = tab; guardar('tab', tab);
   $$('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   $$('.tab').forEach((s) => { s.hidden = s.id !== `tab-${tab}`; });
-  $('.filtros').style.display = tab === 'patrimonio' ? 'none' : '';
+  $('.filtros').style.display = tab === 'patrimonio' || tab === 'detalle' ? 'none' : '';
   render();
 }
 

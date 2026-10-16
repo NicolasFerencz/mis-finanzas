@@ -167,3 +167,35 @@ body.bloqueado > header, body.bloqueado > .filtros, body.bloqueado > main { disp
   background: var(--accent); color: #fff; cursor: pointer; font-weight: 600;
 }
 .login-error { min-height: 1.2em; margin: 0; color: var(--bad); font-size: 14px; }
+
+/* Detalle mensual */
+.det-filtros { position: static; padding: 0 0 12px; border: 0; background: none; }
+.det-mes { display: inline-flex; align-items: center; gap: 4px; }
+.det-mes .icono { font-size: 18px; line-height: 1; }
+#det-buscar { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); min-width: 220px; flex: 1 1 220px; max-width: 360px; }
+.boton { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); cursor: pointer; }
+.boton:hover { background: var(--surface-2); color: var(--ink); }
+.cat { border-bottom: 1px solid var(--grid); }
+.cat > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 14px 1fr auto; gap: 10px; align-items: center; padding: 8px 4px; }
+.cat > summary::-webkit-details-marker { display: none; }
+.cat > summary:hover { background: var(--surface-2); }
+.cat > summary .flecha { color: var(--muted); transition: transform .15s; font-size: 11px; }
+.cat[open] > summary .flecha { transform: rotate(90deg); }
+.cat .nom { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cat .nom b { font-weight: 600; font-size: 14px; }
+.cat .barra { height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; max-width: 320px; }
+.cat .barra i { display: block; height: 100%; border-radius: 2px; }
+.cat .cifras { display: grid; grid-template-columns: repeat(4, auto); gap: 4px 16px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; align-items: baseline; }
+.cat .cifras .tot { font-weight: 600; font-size: 14px; color: var(--ink); }
+.cat .cifras span { color: var(--ink-2); white-space: nowrap; }
+.delta.up { color: var(--bad); } .delta.down { color: var(--good); }
+.ing .delta.up { color: var(--good); } .ing .delta.down { color: var(--bad); }
+.cat .lineas { padding: 0 0 10px 24px; }
+.cat .lineas .tabla td { vertical-align: top; }
+.det-total { display: grid; grid-template-columns: 1fr auto; padding: 10px 4px 0; font-weight: 600; }
+mark { background: var(--warn-bg); color: inherit; border-radius: 2px; }
+@media (max-width: 640px) {
+  .cat > summary { grid-template-columns: 14px 1fr; }
+  .cat .cifras { grid-column: 2; grid-template-columns: repeat(2, auto); justify-content: start; text-align: left; }
+  .cat .lineas { padding-left: 0; }
+}

@@ -9,7 +9,7 @@
     // Aplica el tema guardado antes de pintar, para que no parpadee.
     try { const t = localStorage.getItem('tema'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20261016171325">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -22,6 +22,7 @@
       <button role="tab" data-tab="resumen" aria-selected="true">Resumen</button>
       <button role="tab" data-tab="patrimonio" aria-selected="false">Patrimonio</button>
       <button role="tab" data-tab="tendencias" aria-selected="false">Tendencias</button>
+      <button role="tab" data-tab="detalle" aria-selected="false">Detalle</button>
     </nav>
     <div class="acciones">
       <div class="seg" role="group" aria-label="Moneda">
@@ -112,6 +113,35 @@
       </article>
     </section>
 
+    <!-- DETALLE -->
+    <section id="tab-detalle" class="tab" hidden>
+      <section class="filtros det-filtros" aria-label="Filtros del detalle">
+        <div class="det-mes">
+          <button class="icono" id="det-prev" title="Mes anterior" aria-label="Mes anterior">‹</button>
+          <select id="det-mes"></select>
+          <button class="icono" id="det-next" title="Mes siguiente" aria-label="Mes siguiente">›</button>
+        </div>
+        <input type="search" id="det-buscar" placeholder="Buscar comercio, nota o monto…" aria-label="Buscar">
+        <label class="check"><input type="checkbox" id="det-neutros"> Incluir neutros</label>
+        <button class="boton" id="det-expandir">Expandir todo</button>
+        <button class="boton" id="det-csv">Exportar CSV</button>
+      </section>
+      <div class="kpis" id="det-kpis"></div>
+      <div class="incompletos" id="det-avisos"></div>
+      <article class="card">
+        <div class="card-head"><h2 id="det-titulo">Egresos por categoría</h2><p class="nota">Tocá una categoría para ver cada línea. "vs. prom." compara con el promedio mensual del año.</p></div>
+        <div id="det-egresos"></div>
+      </article>
+      <article class="card">
+        <div class="card-head"><h2>Ingresos</h2></div>
+        <div id="det-ingresos"></div>
+      </article>
+      <article class="card" id="det-neutros-card" hidden>
+        <div class="card-head"><h2>Movimientos neutros</h2><p class="nota">No cuentan como ingreso ni egreso: transferencias internas, cambios de moneda, liquidaciones, ahorro.</p></div>
+        <div id="det-neutros-lista"></div>
+      </article>
+    </section>
+
     <!-- TENDENCIAS -->
     <section id="tab-tendencias" class="tab" hidden>
       <article class="card">
@@ -141,6 +171,6 @@
     </form>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20261016171325"></script>
 </body>
 </html>
