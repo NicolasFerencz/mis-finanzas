@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mis finanzas</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232a78d6'/><path d='M8 22h4v-6H8zm6 0h4V10h-4zm6 0h4v-9h-4z' fill='white'/></svg>">
+  <script>
+    // Aplica el tema guardado antes de pintar, para que no parpadee.
+    try { const t = localStorage.getItem('tema'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="marca">
+      <h1>Mis finanzas</h1>
+      <span class="sub" id="generado"></span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="resumen" aria-selected="true">Resumen</button>
+      <button role="tab" data-tab="patrimonio" aria-selected="false">Patrimonio</button>
+      <button role="tab" data-tab="tendencias" aria-selected="false">Tendencias</button>
+    </nav>
+    <div class="acciones">
+      <div class="seg" role="group" aria-label="Moneda">
+        <button data-moneda="uyu" aria-pressed="true">$U</button>
+        <button data-moneda="usd" aria-pressed="false">US$</button>
+      </div>
+      <button class="icono" id="tema" title="Cambiar tema claro / oscuro" aria-label="Cambiar tema"></button>
+      <button class="icono" id="salir" title="Bloquear (olvida la contraseña de esta pestaña)" aria-label="Bloquear">🔒</button>
+    </div>
+  </header>
+
+  <section class="filtros" aria-label="Filtros">
+    <label>Desde <select id="desde"></select></label>
+    <label>Hasta <select id="hasta"></select></label>
+    <div class="seg" role="group" aria-label="Vista">
+      <button data-modo="mes" aria-pressed="true">Meses puntuales</button>
+      <button data-modo="promedio" aria-pressed="false">Promedio del período</button>
+      <button data-modo="movil" aria-pressed="false">Media móvil</button>
+    </div>
+    <label id="ventana-wrap" hidden>de <select id="ventana"><option>2</option><option selected>3</option><option>4</option><option>6</option></select> meses</label>
+  </section>
+
+  <main>
+    <!-- RESUMEN -->
+    <section id="tab-resumen" class="tab">
+      <div class="kpis" id="kpis"></div>
+
+      <article class="card">
+        <div class="card-head">
+          <h2>Ingresos y egresos por mes</h2>
+          <p class="nota" id="nota-resumen"></p>
+        </div>
+        <div class="chart-wrap alto"><canvas id="ch-resumen" aria-label="Egresos apilados por categoría e ingresos por mes"></canvas></div>
+        <div class="incompletos" id="incompletos"></div>
+      </article>
+
+      <div class="grid-2">
+        <article class="card">
+          <div class="card-head"><h2>Egresos por categoría</h2><p class="nota">Tocá una fila para ver sus movimientos.</p></div>
+          <table class="tabla" id="tabla-cat">
+            <thead><tr><th>Categoría</th><th class="num">Total</th><th class="num">Prom. mensual</th><th class="num">% del gasto</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </article>
+        <article class="card">
+          <div class="card-head"><h2>Ingresos por fuente</h2></div>
+          <table class="tabla" id="tabla-ing">
+            <thead><tr><th>Fuente</th><th class="num">Total</th><th class="num">Prom. mensual</th><th class="num">%</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div class="card-head sep"><h2>Calidad de los datos</h2></div>
+          <ul class="avisos" id="avisos"></ul>
+        </article>
+      </div>
+
+      <article class="card" id="detalle" hidden>
+        <div class="card-head">
+          <h2 id="detalle-titulo"></h2>
+          <label class="check"><input type="checkbox" id="ver-neutros"> Ver también movimientos neutros</label>
+        </div>
+        <div class="scroll"><table class="tabla" id="tabla-mov">
+          <thead><tr><th>Fecha</th><th>Fuente</th><th>Descripción</th><th>Tipo</th><th class="num">Monto</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </article>
+    </section>
+
+    <!-- PATRIMONIO -->
+    <section id="tab-patrimonio" class="tab" hidden>
+      <div class="kpis" id="kpis-pat"></div>
+      <div class="grid-2">
+        <article class="card">
+          <div class="card-head"><h2>Composición</h2><p class="nota">Activos con saldo conocido; las deudas no entran en la dona.</p></div>
+          <div class="chart-wrap"><canvas id="ch-dona" aria-label="Composición del patrimonio"></canvas></div>
+        </article>
+        <article class="card">
+          <div class="card-head"><h2>Evolución del patrimonio</h2><p class="nota" id="nota-evol">Saldo a fin de mes de las cuentas con extracto. Los activos pendientes no se incluyen.</p></div>
+          <div class="chart-wrap"><canvas id="ch-evol" aria-label="Evolución mensual del patrimonio"></canvas></div>
+        </article>
+      </div>
+      <article class="card">
+        <div class="card-head"><h2>Detalle por activo</h2></div>
+        <div class="scroll"><table class="tabla" id="tabla-pat">
+          <thead><tr><th>Activo</th><th>Tipo</th><th class="num">Saldo original</th><th class="num">Equivalente</th><th>Al</th><th>Nota</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <p class="nota">Para actualizar los saldos, editá <code>config/patrimonio.json</code> y volvé a correr <code>python3 scripts/build_data.py</code>.</p>
+      </article>
+    </section>
+
+    <!-- TENDENCIAS -->
+    <section id="tab-tendencias" class="tab" hidden>
+      <article class="card">
+        <div class="card-head">
+          <h2>Gasto mensual por categoría</h2>
+          <div class="seg" role="group" aria-label="Escala">
+            <button data-escala="propia" aria-pressed="true">Escala propia</button>
+            <button data-escala="comun" aria-pressed="false">Escala común</button>
+          </div>
+        </div>
+        <p class="nota">Cada mini gráfico es una categoría. La línea punteada marca el promedio del período. Con "Media móvil" se suavizan los picos.</p>
+        <div class="multiples" id="multiples"></div>
+      </article>
+    </section>
+  </main>
+
+  <div class="login" id="login" hidden>
+    <form class="card login-card" id="login-form" autocomplete="on">
+      <h2>Mis finanzas</h2>
+      <p class="nota">Los datos están cifrados. Ingresá la contraseña para verlos.</p>
+      <input type="text" name="username" value="nico" autocomplete="username" hidden>
+      <label>Contraseña
+        <input type="password" id="login-clave" autocomplete="current-password" required>
+      </label>
+      <button type="submit">Entrar</button>
+      <p class="login-error" id="login-error" role="status"></p>
+    </form>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
