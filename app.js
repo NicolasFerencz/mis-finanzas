@@ -144,6 +144,8 @@ function renderResumen() {
   const resto = {};
   for (const c of orden) if (!conColor.includes(c)) for (const [m, v] of Object.entries(egr[c] || {})) resto[m] = (resto[m] || 0) + v;
   seriesEgr.push({ c: 'Resto', serie: resto });
+  // Desglose de "Resto" por categoría, para mostrarlo en el tooltip.
+  const restoCats = orden.filter((c) => !conColor.includes(c)).map((c) => ({ c, data: transformar(egr[c] || {}, meses) }));
   const surface = css('--surface');
   seriesEgr.forEach(({ c, serie }, i) => {
     datasets.push({
@@ -183,7 +185,14 @@ function renderResumen() {
               const modo = st.modo === 'promedio' ? ' · promedio del período' : st.modo === 'movil' ? ` · media móvil ${st.ventana} meses` : '';
               return nombreMes(m, true) + modo;
             },
-            label: (it) => ` ${it.dataset.label}: ${fmt(it.raw)}`,
+            label: (it) => {
+              const linea = ` ${it.dataset.label}: ${fmt(it.raw)}`;
+              if (it.dataset.label !== 'Resto') return linea;
+              const det = restoCats.map(({ c, data }) => ({ c, v: data[it.dataIndex] }))
+                .filter((d) => Math.abs(d.v) >= 0.5).sort((x, y) => y.v - x.v)
+                .map((d) => `    · ${d.c}: ${fmt(d.v)}`);
+              return [linea, ...det];
+            },
             footer: (it) => {
               const i = it[0].dataIndex;
               const e = it.filter((x) => x.dataset.type === 'bar').reduce((a, x) => a + x.raw, 0);
