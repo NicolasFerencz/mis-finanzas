@@ -9,7 +9,7 @@
     // Aplica el tema guardado antes de pintar, para que no parpadee.
     try { const t = localStorage.getItem('tema'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261016173912">
+  <link rel="stylesheet" href="styles.css?v=20261016174715">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -23,6 +23,7 @@
       <button role="tab" data-tab="patrimonio" aria-selected="false">Patrimonio</button>
       <button role="tab" data-tab="tendencias" aria-selected="false">Tendencias</button>
       <button role="tab" data-tab="detalle" aria-selected="false">Detalle</button>
+      <button role="tab" data-tab="revisar" aria-selected="false">Revisar <span class="badge" id="rev-badge"></span></button>
     </nav>
     <div class="acciones">
       <div class="seg" role="group" aria-label="Moneda">
@@ -142,6 +143,31 @@
       </article>
     </section>
 
+    <!-- REVISAR -->
+    <section id="tab-revisar" class="tab" hidden>
+      <div class="kpis" id="rev-kpis"></div>
+      <div class="aviso-sync" id="rev-sync" hidden></div>
+      <section class="filtros det-filtros" aria-label="Filtros de revisión">
+        <div class="seg" role="group" aria-label="Nivel de duda">
+          <button data-nivel="0" aria-pressed="true">Todas</button>
+          <button data-nivel="3" aria-pressed="false">Alta</button>
+          <button data-nivel="2" aria-pressed="false">Media</button>
+          <button data-nivel="1" aria-pressed="false">Baja</button>
+        </div>
+        <select id="rev-mes" aria-label="Mes"></select>
+        <input type="search" id="rev-buscar" placeholder="Buscar…" aria-label="Buscar">
+        <label class="check"><input type="checkbox" id="rev-hechos"> Mostrar ya revisados</label>
+      </section>
+      <article class="card">
+        <div class="card-head"><h2>Gastos con categoría dudosa</h2><p class="nota">Ordenados por monto y después por nivel de duda. Cambiá la categoría o tocá ✓ si está bien.</p></div>
+        <div class="scroll alto-rev"><table class="tabla" id="rev-tabla">
+          <thead><tr><th>Fecha</th><th>Descripción</th><th class="num">Monto</th><th>Duda</th><th>Categoría</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <button class="boton" id="rev-mas" hidden>Ver más</button>
+      </article>
+    </section>
+
     <!-- TENDENCIAS -->
     <section id="tab-tendencias" class="tab" hidden>
       <article class="card">
@@ -171,6 +197,6 @@
     </form>
   </div>
 
-  <script src="app.js?v=20261016173912"></script>
+  <script src="app.js?v=20261016174715"></script>
 </body>
 </html>

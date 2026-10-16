@@ -8,6 +8,7 @@ const st = {
   datos: null, moneda: 'uyu', desde: null, hasta: null, modo: 'mes', ventana: 3,
   tab: 'resumen', escala: 'propia', catSel: null, verNeutros: false,
   detMes: null, detBuscar: '', detNeutros: false, detAbiertas: new Set(),
+  revNivel: 0, revMes: '*', revBuscar: '', revHechos: false, revLimite: 60, local: false,
 };
 const charts = {};
 
@@ -396,6 +397,114 @@ function render() {
   if (st.tab === 'patrimonio') renderPatrimonio();
   if (st.tab === 'tendencias') renderTendencias();
   if (st.tab === 'detalle') renderDetalleMes();
+  if (st.tab === 'revisar') renderRevisar();
+  pintarBadge();
+}
+
+// ---------- REVISAR CATEGORÍAS
+// Los cambios se guardan en config/reasignaciones.json vía el servidor local (./serve.sh).
+// En la versión publicada no hay servidor: quedan en este navegador y se pueden exportar.
+const leerPend = () => { try { return JSON.parse(localStorage.getItem('reasignaciones') || '{}'); } catch (e) { return {}; } };
+const guardarPend = (o) => { try { localStorage.setItem('reasignaciones', JSON.stringify(o)); } catch (e) {} };
+
+function aplicarReasignacion(x, cat) {
+  if (!x.catOriginal) x.catOriginal = x.categoria;
+  x.categoria = cat || x.catOriginal;
+  x.revisado = !!cat;
+}
+
+function aplicarPendientes() {
+  const pend = leerPend();
+  for (const x of st.datos.movimientos) if (pend[x.id]) aplicarReasignacion(x, pend[x.id].categoria);
+}
+
+async function guardarCambios(cambios) {
+  for (const c of cambios) aplicarReasignacion(c.x, c.categoria);
+  const cuerpo = { cambios: cambios.map((c) => ({ id: c.x.id, categoria: c.categoria, desc: c.x.desc })) };
+  let ok = false;
+  if (st.local) {
+    try { ok = (await fetch('/api/reasignar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) })).ok; } catch (e) {}
+  }
+  if (!ok) {
+    const pend = leerPend();
+    for (const c of cuerpo.cambios) { if (c.categoria) pend[c.id] = c; else delete pend[c.id]; }
+    guardarPend(pend);
+  }
+  render();
+}
+
+const pendientesRevision = () => st.datos.movimientos.filter((x) => x.tipo === 'egreso' && x.duda > 0 && !x.revisado);
+
+function pintarBadge() {
+  const n = pendientesRevision().length;
+  $('#rev-badge').textContent = n ? String(n) : '';
+}
+
+function renderRevisar() {
+  const selMes = $('#rev-mes');
+  if (!selMes.options.length) {
+    selMes.innerHTML = '<option value="*">Todos los meses</option>' + st.datos.meses.map((m) => `<option value="${m}">${nombreMes(m, true)}</option>`).join('');
+  }
+  selMes.value = st.revMes;
+  const todos = st.datos.movimientos.filter((x) => x.tipo === 'egreso' && (x.duda > 0 || x.revisado));
+  const pend = pendientesRevision();
+  const porNivel = (n) => pend.filter((x) => x.duda === n);
+  const s = (xs) => xs.reduce((a, x) => a + monto(x), 0);
+  $('#rev-kpis').innerHTML = [
+    kpi('Por revisar', String(pend.length), fmt(s(pend))),
+    kpi('Duda alta', String(porNivel(3).length), fmt(s(porNivel(3))), porNivel(3).length ? 'neg' : ''),
+    kpi('Duda media', String(porNivel(2).length), fmt(s(porNivel(2)))),
+    kpi('Revisados', String(todos.filter((x) => x.revisado).length), 'Con categoría confirmada o cambiada', 'pos'),
+  ].join('');
+
+  const pendLocal = Object.keys(leerPend()).length;
+  const sync = $('#rev-sync');
+  sync.hidden = !pendLocal;
+  if (pendLocal) {
+    sync.innerHTML = `<span>${pendLocal} ${pendLocal === 1 ? 'cambio guardado' : 'cambios guardados'} solo en este navegador${st.local ? '' : ' (la versión publicada no puede escribir en tu máquina)'}.</span><button class="boton" id="rev-exportar">Exportar reasignaciones</button>`;
+    $('#rev-exportar').addEventListener('click', () => {
+      const pend = leerPend();
+      const obj = Object.fromEntries(Object.entries(pend).map(([k, v]) => [k, { categoria: v.categoria, desc: v.desc }]));
+      const blob = new Blob([JSON.stringify(obj, null, 1)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'reasignaciones.json'; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+  }
+
+  const lista = todos.filter((x) => (st.revHechos || !x.revisado)
+    && (!st.revNivel || x.duda === st.revNivel)
+    && (st.revMes === '*' || x.mes === st.revMes)
+    && coincide(x, st.revBuscar))
+    .sort((a, b) => Math.abs(b.uyu) - Math.abs(a.uyu) || b.duda - a.duda);
+  const cats = [...new Set([...st.datos.orden_categorias, ...st.datos.movimientos.filter((x) => x.tipo === 'egreso').map((x) => x.categoria)])];
+  const nombreN = { 3: 'Alta', 2: 'Media', 1: 'Baja' };
+  const clave = (x) => normal(x.desc.replace(/\(.*?\)/g, '').replace(/\d+/g, '')).trim();
+  const visibles = lista.slice(0, st.revLimite);
+  $('#rev-tabla tbody').innerHTML = visibles.map((x) => {
+    const iguales = pend.filter((y) => y !== x && clave(y) === clave(x)).length;
+    return `<tr data-id="${esc(x.id)}" class="${x.revisado ? 'hecho' : ''}">
+      <td class="fecha">${fechaUy(x.fecha)}</td>
+      <td>${esc(x.desc)}<div class="nota">${esc(x.fuente)}${x.nota ? ' · ' + esc(x.nota) : ''}</div></td>
+      <td class="num">${fmt(monto(x))}</td>
+      <td>${x.revisado ? '<span class="duda ok">revisado</span>' : `<span class="duda n${x.duda}" title="${esc(x.motivo)}">${nombreN[x.duda]}</span><div class="nota">${esc(x.motivo)}</div>`}</td>
+      <td><select data-id="${esc(x.id)}">${cats.map((c) => `<option ${c === x.categoria ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
+        ${!x.revisado && iguales ? `<button class="iguales" data-id="${esc(x.id)}">Aplicar a ${iguales} ${iguales === 1 ? 'igual' : 'iguales'}</button>` : ''}</td>
+      <td>${x.revisado ? `<button class="ok-btn" data-deshacer="${esc(x.id)}" title="Volver a la categoría automática">↺</button>` : `<button class="ok-btn" data-ok="${esc(x.id)}" title="La categoría está bien">✓</button>`}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="nota">Nada para revisar con estos filtros. 🎉</td></tr>';
+  $('#rev-mas').hidden = lista.length <= st.revLimite;
+  $('#rev-mas').textContent = `Ver más (${lista.length - st.revLimite})`;
+
+  const porId = Object.fromEntries(st.datos.movimientos.map((x) => [x.id, x]));
+  $$('#rev-tabla select').forEach((sel) => sel.addEventListener('change', () => guardarCambios([{ x: porId[sel.dataset.id], categoria: sel.value }])));
+  $$('#rev-tabla [data-ok]').forEach((b) => b.addEventListener('click', () => { const x = porId[b.dataset.ok]; guardarCambios([{ x, categoria: x.categoria }]); }));
+  $$('#rev-tabla [data-deshacer]').forEach((b) => b.addEventListener('click', () => guardarCambios([{ x: porId[b.dataset.deshacer], categoria: null }])));
+  $$('#rev-tabla .iguales').forEach((b) => b.addEventListener('click', () => {
+    const x = porId[b.dataset.id];
+    const cat = $(`#rev-tabla select[data-id="${CSS.escape(x.id)}"]`).value;
+    guardarCambios([x, ...pend.filter((y) => y !== x && clave(y) === clave(x))].map((y) => ({ x: y, categoria: cat })));
+  }));
 }
 
 // ---------- DETALLE MENSUAL
@@ -536,6 +645,7 @@ function setPressed(sel, attr, val) {
 
 function iniciar(datos) {
   st.datos = datos;
+  aplicarPendientes();
   const meses = datos.meses;
   const opciones = meses.map((m) => `<option value="${m}">${nombreMes(m, true)}</option>`).join('');
   $('#desde').innerHTML = opciones;
@@ -571,6 +681,12 @@ function iniciar(datos) {
     $('#det-expandir').textContent = abrir ? 'Contraer todo' : 'Expandir todo';
   });
   $('#det-csv').addEventListener('click', exportarCSV);
+  $$('[data-nivel]').forEach((b) => b.addEventListener('click', () => { st.revNivel = +b.dataset.nivel; setPressed('[data-nivel]', 'nivel', b.dataset.nivel); st.revLimite = 60; render(); }));
+  $('#rev-mes').addEventListener('change', (e) => { st.revMes = e.target.value; st.revLimite = 60; render(); });
+  let tRev;
+  $('#rev-buscar').addEventListener('input', (e) => { clearTimeout(tRev); tRev = setTimeout(() => { st.revBuscar = e.target.value.trim(); render(); }, 150); });
+  $('#rev-hechos').addEventListener('change', (e) => { st.revHechos = e.target.checked; render(); });
+  $('#rev-mas').addEventListener('click', () => { st.revLimite += 60; render(); });
   $('#tema').addEventListener('click', () => {
     const nuevo = temaActual() === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = nuevo; guardar('tema', nuevo); pintarBotonTema(); render();
@@ -586,7 +702,7 @@ function mostrarTab(tab) {
   st.tab = tab; guardar('tab', tab);
   $$('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   $$('.tab').forEach((s) => { s.hidden = s.id !== `tab-${tab}`; });
-  $('.filtros').style.display = tab === 'patrimonio' || tab === 'detalle' ? 'none' : '';
+  $('.filtros').style.display = ['patrimonio', 'detalle', 'revisar'].includes(tab) ? 'none' : '';
   render();
 }
 
@@ -629,7 +745,7 @@ function pedirClave(sobre) {
 
 async function cargar() {
   const plano = await fetch('data/finanzas.json', { cache: 'no-store' }).catch(() => null);
-  if (plano && plano.ok) return iniciar(await plano.json());
+  if (plano && plano.ok) { st.local = true; return iniciar(await plano.json()); }
   const r = await fetch('datos/finanzas.enc.json', { cache: 'no-store' }).catch(() => null);
   if (!r || !r.ok) {
     document.querySelector('main').innerHTML = '<article class="card"><h2>No encuentro los datos</h2><p class="nota">Corré <code>./serve.sh</code> en local, o <code>make publicar</code> para generar la versión cifrada.</p></article>';

@@ -199,3 +199,22 @@ mark { background: var(--warn-bg); color: inherit; border-radius: 2px; }
   .cat .cifras { grid-column: 2; grid-template-columns: repeat(2, auto); justify-content: start; text-align: left; }
   .cat .lineas { padding-left: 0; }
 }
+
+/* Revisar categorías */
+.badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 999px; background: var(--bad); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+.badge:empty { display: none; }
+.alto-rev { max-height: none; }
+.duda { font-size: 11px; padding: 1px 6px; border-radius: 999px; white-space: nowrap; }
+.duda.n3 { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.duda.n2 { background: var(--warn-bg); color: var(--warn-ink); }
+.duda.n1 { background: var(--surface-2); color: var(--ink-2); }
+.duda.ok { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+#rev-tabla select { font-size: 12px; padding: 4px 6px; max-width: 190px; }
+#rev-tabla .ok-btn { font: inherit; border: 1px solid var(--border); background: var(--surface); color: var(--good); border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+#rev-tabla .ok-btn:hover { background: var(--surface-2); }
+#rev-tabla .iguales { display: block; margin-top: 4px; font-size: 11px; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+#rev-tabla tr.hecho td { opacity: .55; }
+#rev-buscar { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); min-width: 200px; }
+.aviso-sync[hidden] { display: none; }
+.aviso-sync { margin: 12px 0; padding: 10px 14px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-ink); font-size: 13px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+#rev-mas { margin-top: 10px; }
