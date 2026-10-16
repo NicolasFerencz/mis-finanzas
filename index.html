@@ -9,7 +9,7 @@
     // Aplica el tema guardado antes de pintar, para que no parpadee.
     try { const t = localStorage.getItem('tema'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261016193508">
+  <link rel="stylesheet" href="styles.css?v=20261016193732">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -187,8 +187,10 @@
   <div class="login" id="login" hidden>
     <form class="card login-card" id="login-form" autocomplete="on">
       <h2>Mis finanzas</h2>
-      <p class="nota">Los datos están cifrados. Ingresá la contraseña para verlos.</p>
-      <input type="text" name="username" value="nico" autocomplete="username" hidden>
+      <p class="nota">Los datos están cifrados. Ingresá usuario y contraseña para verlos.</p>
+      <label>Usuario
+        <input type="email" id="login-usuario" autocomplete="username" required>
+      </label>
       <label>Contraseña
         <input type="password" id="login-clave" autocomplete="current-password" required>
       </label>
@@ -197,6 +199,6 @@
     </form>
   </div>
 
-  <script src="app.js?v=20261016193508"></script>
+  <script src="app.js?v=20261016193732"></script>
 </body>
 </html>

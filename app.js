@@ -725,10 +725,12 @@ function pedirClave(sobre) {
   const err = $('#login-error');
   document.body.classList.add('bloqueado');
   login.hidden = false;
-  $('#login-clave').focus();
+  (sobre.con_usuario ? $('#login-usuario') : $('#login-clave')).focus();
+  if (!sobre.con_usuario) $('#login-usuario').closest('label').hidden = true, $('#login-usuario').required = false;
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    const clave = $('#login-clave').value;
+    const usuario = $('#login-usuario').value.trim().toLowerCase();
+    const clave = sobre.con_usuario ? `${usuario}\n${$('#login-clave').value}` : $('#login-clave').value;
     err.textContent = 'Descifrando…';
     try {
       const datos = await descifrar(sobre, clave);
@@ -737,7 +739,7 @@ function pedirClave(sobre) {
       document.body.classList.remove('bloqueado');
       iniciar(datos);
     } catch (e) {
-      err.textContent = 'Contraseña incorrecta.';
+      err.textContent = 'Usuario o contraseña incorrectos.';
       $('#login-clave').select();
     }
   });
