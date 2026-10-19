@@ -9,7 +9,7 @@
     // Aplica el tema guardado antes de pintar, para que no parpadee.
     try { const t = localStorage.getItem('tema'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261019165239">
+  <link rel="stylesheet" href="styles.css?v=20261019165549">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -173,13 +173,13 @@
       <article class="card">
         <div class="card-head">
           <h2>Gasto mensual por categoría</h2>
-          <div class="seg" role="group" aria-label="Escala">
-            <button data-escala="propia" aria-pressed="true">Escala propia</button>
-            <button data-escala="comun" aria-pressed="false">Escala común</button>
+          <div class="seg" role="group" aria-label="Categorías visibles">
+            <button data-vista-tend="top" aria-pressed="true">Principales</button>
+            <button data-vista-tend="todas" aria-pressed="false">Todas</button>
           </div>
         </div>
-        <p class="nota">Cada mini gráfico es una categoría. La línea punteada marca el promedio del período. Con "Media móvil" se suavizan los picos.</p>
-        <div class="multiples" id="multiples"></div>
+        <p class="nota">Tocá una categoría en la leyenda para mostrarla u ocultarla; pasá el mouse por un mes para ver todas juntas. Con "Media móvil" se suavizan los picos.</p>
+        <div class="chart-wrap tend"><canvas id="ch-tend" aria-label="Gasto mensual por categoría"></canvas></div>
       </article>
     </section>
   </main>
@@ -204,6 +204,6 @@
     </form>
   </div>
 
-  <script src="app.js?v=20261019165239"></script>
+  <script src="app.js?v=20261019165549"></script>
 </body>
 </html>

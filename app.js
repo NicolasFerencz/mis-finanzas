@@ -6,7 +6,7 @@ const N_SLOTS = 7; // categorías con color propio; el resto se agrupa en "Resto
 
 const st = {
   datos: null, moneda: 'uyu', desde: null, hasta: null, modo: 'mes', ventana: 3,
-  tab: 'resumen', escala: 'propia', catSel: null, verNeutros: false,
+  tab: 'resumen', escala: 'propia', vistaTend: 'top', tendOcultas: null, catSel: null, verNeutros: false,
   detMes: null, detBuscar: '', detNeutros: false, detAbiertas: new Set(),
   revNivel: 0, revMes: '*', revBuscar: '', revHechos: false, revLimite: 60, local: false,
 };
@@ -347,37 +347,49 @@ function renderPatrimonio() {
 function renderTendencias() {
   const meses = mesesRango();
   const egr = sumarPor('egreso');
-  const { orden } = categoriasConColor();
+  const { conColor, color, orden } = categoriasConColor();
   const tot = (c) => meses.reduce((a, m) => a + (egr[c]?.[m] || 0), 0);
   const cats = orden.filter((c) => Math.abs(tot(c)) >= 0.5).sort((a, b) => tot(b) - tot(a));
-  const series = Object.fromEntries(cats.map((c) => [c, transformar(egr[c] || {}, meses)]));
-  const maxComun = Math.max(...cats.flatMap((c) => series[c]), 0);
-  const cont = $('#multiples');
-  Object.keys(charts).filter((k) => k.startsWith('mini-')).forEach((k) => { charts[k].destroy(); delete charts[k]; });
-  cont.innerHTML = cats.map((c, i) => `
-    <div class="mini"><h3>${esc(c)} <span>${fmt(tot(c) / (meses.length || 1))}/mes</span></h3>
-    <div class="chart-wrap"><canvas id="mini-${i}" aria-label="Gasto mensual en ${esc(c)}"></canvas></div></div>`).join('');
-  const acc = css('--accent');
-  cats.forEach((c, i) => {
-    const prom = tot(c) / (meses.length || 1);
-    nuevoChart(`mini-${i}`, {
-      type: 'line',
-      data: {
-        labels: meses.map((m) => nombreMes(m)),
-        datasets: [
-          { label: c, data: series[c], borderColor: acc, backgroundColor: acc + '22', fill: true, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, cubicInterpolationMode: 'monotone' },
-          { label: 'Promedio', data: meses.map(() => prom), borderColor: css('--muted'), borderDash: [4, 4], borderWidth: 1, pointRadius: 0, pointHoverRadius: 0 },
-        ],
-      },
-      options: {
-        maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-        scales: {
-          x: ejeX({ ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 5, font: { size: 10 } } }),
-          y: ejeY({ beginAtZero: true, max: st.escala === 'comun' ? maxComun * 1.05 : undefined, ticks: { callback: (v) => fmtCorto(v), maxTicksLimit: 3, font: { size: 10 } } }),
+  const n = meses.length || 1;
+  if (!st.tendOcultas) st.tendOcultas = {};
+  const datasets = cats.map((c) => {
+    const principal = conColor.includes(c);
+    const col = principal ? css(color[c]) : css('--resto');
+    const oculto = c in st.tendOcultas ? st.tendOcultas[c] : (st.vistaTend === 'todas' ? false : !principal);
+    return {
+      label: `${c} · ${fmtCorto(tot(c) / n)}/mes`, cat: c, data: transformar(egr[c] || {}, meses), hidden: oculto,
+      borderColor: col, backgroundColor: col, borderWidth: principal ? 2.5 : 1.5, borderDash: principal ? [] : [5, 4],
+      pointRadius: 3, pointHoverRadius: 6, pointBorderColor: css('--surface'), pointBorderWidth: 1.5, cubicInterpolationMode: 'monotone', tension: 0.3,
+    };
+  });
+  nuevoChart('ch-tend', {
+    type: 'line',
+    data: { labels: meses.map((m) => nombreMes(m)), datasets },
+    options: {
+      maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      scales: { x: ejeX(), y: ejeY({ beginAtZero: true }) },
+      plugins: {
+        legend: {
+          position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, padding: 12 },
+          onClick: (e, item, legend) => {
+            const ds = legend.chart.data.datasets[item.datasetIndex];
+            ds.hidden = !ds.hidden;
+            st.tendOcultas[ds.cat] = ds.hidden;
+            legend.chart.update();
+          },
         },
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (it) => ` ${it.dataset.label}: ${fmt(it.raw)}` } } },
+        tooltip: {
+          itemSort: (a, b) => b.raw - a.raw,
+          filter: (it) => Math.abs(it.raw) >= 0.5,
+          callbacks: {
+            title: (it) => nombreMes(meses[it[0].dataIndex], true) + (st.modo === 'movil' ? ` · media móvil ${st.ventana} meses` : st.modo === 'promedio' ? ' · promedio del período' : ''),
+            label: (it) => ` ${it.dataset.cat}: ${fmt(it.raw)}`,
+            footer: (it) => `Total visible: ${fmt(it.reduce((a, x) => a + x.raw, 0))}`,
+          },
+          footerColor: css('--ink'),
+        },
       },
-    });
+    },
   });
 }
 
@@ -741,7 +753,7 @@ function iniciar(datos) {
   $$('[data-modo]').forEach((b) => b.addEventListener('click', () => { st.modo = b.dataset.modo; setPressed('[data-modo]', 'modo', st.modo); $('#ventana-wrap').hidden = st.modo !== 'movil'; render(); }));
   $('#ventana').addEventListener('change', (e) => { st.ventana = +e.target.value; render(); });
   $$('[data-moneda]').forEach((b) => b.addEventListener('click', () => { st.moneda = b.dataset.moneda; guardar('moneda', st.moneda); setPressed('[data-moneda]', 'moneda', st.moneda); render(); }));
-  $$('[data-escala]').forEach((b) => b.addEventListener('click', () => { st.escala = b.dataset.escala; setPressed('[data-escala]', 'escala', st.escala); render(); }));
+  $$('[data-vista-tend]').forEach((b) => b.addEventListener('click', () => { st.vistaTend = b.dataset.vistaTend; st.tendOcultas = {}; setPressed('[data-vista-tend]', 'vistaTend', st.vistaTend); render(); }));
   $('#ver-neutros').addEventListener('change', (e) => { st.verNeutros = e.target.checked; renderDetalle(mesesRango()); });
   $$('[data-tab]').forEach((b) => b.addEventListener('click', () => mostrarTab(b.dataset.tab)));
   $('#det-mes').addEventListener('change', (e) => { st.detMes = e.target.value; render(); });

@@ -240,3 +240,6 @@ mark { background: var(--warn-bg); color: inherit; border-radius: 2px; }
 .panel-rel a { color: var(--accent); }
 tr[data-mov] { cursor: pointer; }
 @media (min-width: 1100px) { body.con-panel main, body.con-panel > header, body.con-panel > .filtros { margin-right: 420px; } }
+
+.chart-wrap.tend { height: 520px; }
+@media (max-width: 640px) { .chart-wrap.tend { height: 420px; } }
